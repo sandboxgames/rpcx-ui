@@ -1,9 +1,9 @@
 {
 	"registry_type": "etcd",
-	"registry_url": "http://172.24.14.29:2379",
-	"service_base_url": "/rpcx",
+	"registry_url": "http://127.0.0.1:2379",
+	"service_base_url": "/coral",
 	"host": "0.0.0.0",
-	"port": 9981,
+	"port": 9898,
 	"user": "admin",
 	"password": "admin"
 }

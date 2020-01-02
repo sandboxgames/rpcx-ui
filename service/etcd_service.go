@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
 	"encoding/base64"
@@ -8,22 +8,18 @@ import (
 	"strings"
 
 	"github.com/docker/libkv"
-	kvstore "github.com/docker/libkv/store"
-	"github.com/docker/libkv/store/consul"
+	"github.com/docker/libkv/store"
+	etcd "github.com/smallnest/libkv-etcdv3-store"
 )
 
-type ConsulRegistry struct {
-	kv kvstore.Store
+type EtcdRegistry struct {
+	kv store.Store
 }
 
-func (r *ConsulRegistry) initRegistry() {
-	consul.Register()
+func (r *EtcdRegistry) InitRegistry() {
+	etcd.Register()
 
-	if strings.HasPrefix(serverConfig.ServiceBaseURL, "/") {
-		serverConfig.ServiceBaseURL = serverConfig.ServiceBaseURL[1:]
-	}
-
-	kv, err := libkv.NewStore(kvstore.CONSUL, []string{serverConfig.RegistryURL}, nil)
+	kv, err := libkv.NewStore(etcd.ETCDV3, []string{ServerConfig.RegistryURL}, nil)
 	if err != nil {
 		log.Printf("cannot create etcd registry: %v", err)
 		return
@@ -33,12 +29,13 @@ func (r *ConsulRegistry) initRegistry() {
 	return
 }
 
-func (r *ConsulRegistry) fetchServices() []*Service {
-	var services []*Service
-	kvs, err := r.kv.List(serverConfig.ServiceBaseURL)
+func (r *EtcdRegistry) FetchServices() []*Service {
+	services := make(map[string]*Service)
+
+	kvs, err := r.kv.List(ServerConfig.ServiceBaseURL)
 	if err != nil {
-		log.Printf("failed to list services %s: %v", serverConfig.ServiceBaseURL, err)
-		return services
+		log.Printf("failed to list services %s: %v", ServerConfig.ServiceBaseURL, err)
+		return toList(services)
 	}
 
 	for _, value := range kvs {
@@ -52,7 +49,7 @@ func (r *ConsulRegistry) fetchServices() []*Service {
 		for _, n := range nodes {
 			key := string(n.Key[:])
 			i := strings.LastIndex(key, "/")
-			serviceName := strings.TrimPrefix(key[0:i], serverConfig.ServiceBaseURL)
+			serviceName := strings.TrimPrefix(key[0:i], ServerConfig.ServiceBaseURL)
 			var serviceAddr string
 			fields := strings.Split(key, "/")
 			if fields != nil && len(fields) > 1 {
@@ -74,16 +71,25 @@ func (r *ConsulRegistry) fetchServices() []*Service {
 			}
 			id := base64.StdEncoding.EncodeToString([]byte(serviceName + "@" + serviceAddr))
 			service := &Service{ID: id, Name: serviceName, Address: serviceAddr, Metadata: string(n.Value[:]), State: state, Group: group}
-			services = append(services, service)
+			services[service.ID] = service
+			log.Println("Service: %V", service)
 		}
 
 	}
 
+	return toList(services)
+}
+
+func toList(m map[string]*Service) []*Service {
+	var services []*Service
+	for _, v := range m {
+		services = append(services, v)
+	}
 	return services
 }
 
-func (r *ConsulRegistry) deactivateService(name, address string) error {
-	key := path.Join(serverConfig.ServiceBaseURL, name, address)
+func (r *EtcdRegistry) DeactivateService(name, address string) error {
+	key := path.Join(ServerConfig.ServiceBaseURL, name, address)
 
 	kv, err := r.kv.Get(key)
 
@@ -97,7 +103,7 @@ func (r *ConsulRegistry) deactivateService(name, address string) error {
 		return err
 	}
 	v.Set("state", "inactive")
-	err = r.kv.Put(kv.Key, []byte(v.Encode()), &kvstore.WriteOptions{IsDir: false})
+	err = r.kv.Put(kv.Key, []byte(v.Encode()), &store.WriteOptions{IsDir: false})
 	if err != nil {
 		log.Println("etcd set failed, err : ", err.Error())
 	}
@@ -105,8 +111,8 @@ func (r *ConsulRegistry) deactivateService(name, address string) error {
 	return err
 }
 
-func (r *ConsulRegistry) activateService(name, address string) error {
-	key := path.Join(serverConfig.ServiceBaseURL, name, address)
+func (r *EtcdRegistry) ActivateService(name, address string) error {
+	key := path.Join(ServerConfig.ServiceBaseURL, name, address)
 	kv, err := r.kv.Get(key)
 
 	v, err := url.ParseQuery(string(kv.Value[:]))
@@ -115,7 +121,7 @@ func (r *ConsulRegistry) activateService(name, address string) error {
 		return err
 	}
 	v.Set("state", "active")
-	err = r.kv.Put(kv.Key, []byte(v.Encode()), &kvstore.WriteOptions{IsDir: false})
+	err = r.kv.Put(kv.Key, []byte(v.Encode()), &store.WriteOptions{IsDir: false})
 	if err != nil {
 		log.Println("etcdv3 put failed. err: ", err.Error())
 	}
@@ -123,8 +129,8 @@ func (r *ConsulRegistry) activateService(name, address string) error {
 	return err
 }
 
-func (r *ConsulRegistry) updateMetadata(name, address string, metadata string) error {
-	key := path.Join(serverConfig.ServiceBaseURL, name, address)
-	err := r.kv.Put(key, []byte(metadata), &kvstore.WriteOptions{IsDir: false})
+func (r *EtcdRegistry) UpdateMetadata(name, address string, metadata string) error {
+	key := path.Join(ServerConfig.ServiceBaseURL, name, address)
+	err := r.kv.Put(key, []byte(metadata), &store.WriteOptions{IsDir: false})
 	return err
 }

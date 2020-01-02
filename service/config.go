@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
 	"encoding/json"
@@ -9,39 +9,39 @@ import (
 )
 
 func init() {
-	loadConfig()
+	LoadConfig()
 }
 
 // Config parameters
-var serverConfig = Configuration{}
-var reg Registry
+var ServerConfig = Configuration{}
+var Reg Registry
 
-func loadConfig() {
+func LoadConfig() {
 	file, e := ioutil.ReadFile("./config.json")
 	if e != nil {
 		fmt.Printf("File error: %v\n", e)
 		os.Exit(1)
 	}
 	//fmt.Printf("Loaded Config: \n%s\n", string(file))
-	json.Unmarshal(file, &serverConfig)
+	json.Unmarshal(file, &ServerConfig)
 	fmt.Println("succeeded to read the config")
 
-	switch serverConfig.RegistryType {
+	switch ServerConfig.RegistryType {
 	case "zookeeper":
-		reg = &ZooKeeperRegistry{}
+		Reg = &ZooKeeperRegistry{}
 	case "etcd":
-		reg = &EtcdRegistry{}
+		Reg = &EtcdRegistry{}
 	case "consul":
-		reg = &ConsulRegistry{}
+		Reg = &ConsulRegistry{}
 	default:
-		fmt.Printf("unsupported registry: %s\n", serverConfig.RegistryType)
+		fmt.Printf("unsupported registry: %s\n", ServerConfig.RegistryType)
 		os.Exit(2)
 	}
 
-	if !strings.HasSuffix(serverConfig.ServiceBaseURL, "/") {
-		serverConfig.ServiceBaseURL += "/"
+	if !strings.HasSuffix(ServerConfig.ServiceBaseURL, "/") {
+		ServerConfig.ServiceBaseURL += "/"
 	}
-	reg.initRegistry()
+	Reg.InitRegistry()
 }
 
 // Configuration is configuration strcut refects the config.json
